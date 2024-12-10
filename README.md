@@ -113,4 +113,3 @@ L'application génère plusieurs sorties :
 - **Développeur** : Kuassi Pierre DOVODJI - Nasser OLLEIK - Kouassi Julien ATTA
   **Email** : [dovodjipierre@gmail.com](mailto:dovodjipierre@gmail.com)
 
-
