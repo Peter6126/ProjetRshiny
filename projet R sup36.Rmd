@@ -1,0 +1,186 @@
+---
+title: "projet R sup36"
+author: "OLLEIK Nasser"
+date: "2024-11-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+##netoyer les donnees
+```{r}
+library(data.table)
+
+clean_large_csv_file <- function(file_path) {
+  # Charger le fichier en tant que data.table pour une gestion efficace de la mémoire
+  data <- fread(file_path)
+  
+  # Vérifier le chargement des données
+  if (!is.data.table(data)) {
+    stop("Erreur : les données ne sont pas un tableau valide. Vérifiez le format du fichier.")
+  }
+  
+  # Voir un aperçu des données
+  print("Aperçu des données avant nettoyage :")
+  print(head(data))
+  
+  # Supprimer les lignes avec toutes les valeurs manquantes
+  data <- data[!apply(data, 1, function(row) all(is.na(row))), ]
+  
+  # Supprimer les colonnes entièrement vides
+  data <- data[, lapply(.SD, function(col) if (!all(is.na(col))) col else NULL)]
+  
+  # Convertir les colonnes au bon type
+  for (col in names(data)) {
+    if (all(grepl("^[0-9.]+$", data[[col]]), na.rm = TRUE)) {
+      data[[col]] <- as.numeric(data[[col]])
+    } else if (all(grepl("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", data[[col]]), na.rm = TRUE)) {
+      data[[col]] <- as.Date(data[[col]])
+    }
+  }
+  
+  # Supprimer les doublons
+  data <- unique(data)
+  
+  # Renommer les colonnes pour éviter des conflits
+  setnames(data, make.names(names(data), unique = TRUE))
+  
+  # Sauvegarder les données nettoyées
+  cleaned_file <- "conso-sup36-region(nettoyer).csv"
+  fwrite(data, cleaned_file)
+  
+  print(paste("Le fichier nettoyé a été sauvegardé sous le nom :", cleaned_file))
+  
+  return(data)
+}
+
+# Appeler la fonction avec votre fichier
+file_path <- "conso-sup36-region.csv"
+cleaned_data <- clean_large_csv_file(file_path)
+
+# Lire et afficher le fichier nettoyé
+cleaned_file_path <- "conso-sup36-region(nettoyer).csv"
+cleaned_data <- fread(cleaned_file_path)
+
+# Afficher les premières lignes
+print("Aperçu du fichier nettoyé :")
+print(head(cleaned_data))
+
+# Afficher un résumé statistique
+print("Résumé statistique des données nettoyées :")
+print(summary(cleaned_data))
+
+
+
+```
+
+
+```{r}
+library(shiny)
+library(data.table)
+library(ggplot2)
+
+# Charger le fichier nettoyé
+file_path <- "conso-sup36-region(nettoyer).csv"
+data <- fread(file_path)
+
+# Interface utilisateur
+ui <- fluidPage(
+  titlePanel("Exploration Avancée des Données Nettoyées"),
+  
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("var", "Choisissez une variable numérique :", 
+                  choices = names(data)[sapply(data, is.numeric)]),
+      selectInput("group_var", "Choisissez une variable de regroupement :", 
+                  choices = c("Aucun", names(data))),
+      sliderInput("rows", "Nombre de lignes à afficher :", 
+                  min = 1, max = nrow(data), value = 10),
+      numericInput("bins", "Nombre de classes pour l'histogramme :", 10, min = 1),
+      actionButton("summary_btn", "Afficher le résumé"),
+      actionButton("correlation_btn", "Afficher la corrélation")
+    ),
+    
+    mainPanel(
+      tabsetPanel(
+        tabPanel("Aperçu des données", tableOutput("table")),
+        tabPanel("Histogramme", plotOutput("hist")),
+        tabPanel("Boxplot", plotOutput("boxplot")),
+        tabPanel("Résumé des données", verbatimTextOutput("summary")),
+        tabPanel("Corrélation", verbatimTextOutput("correlation")),
+        tabPanel("Densité", plotOutput("density_plot"))
+      )
+    )
+  )
+)
+
+# Logique serveur
+server <- function(input, output) {
+  # Aperçu des données
+  output$table <- renderTable({
+    head(data, input$rows) # Afficher le nombre de lignes sélectionné
+  })
+  
+  # Histogramme interactif
+  output$hist <- renderPlot({
+    req(input$var)
+    ggplot(data, aes_string(x = input$var)) +
+      geom_histogram(bins = input$bins, fill = "blue", color = "white") +
+      labs(title = paste("Histogramme de", input$var), x = input$var, y = "Fréquence")
+  })
+  
+  # Boxplot interactif
+  output$boxplot <- renderPlot({
+    req(input$var, input$group_var)
+    if (input$group_var == "Aucun") {
+      ggplot(data, aes_string(y = input$var)) +
+        geom_boxplot(fill = "orange") +
+        labs(title = paste("Boxplot de", input$var), y = input$var)
+    } else {
+      ggplot(data, aes_string(x = input$group_var, y = input$var)) +
+        geom_boxplot(fill = "orange") +
+        labs(title = paste("Boxplot de", input$var, "par", input$group_var), 
+             x = input$group_var, y = input$var)
+    }
+  })
+  
+  # Résumé statistique interactif
+  observeEvent(input$summary_btn, {
+    output$summary <- renderPrint({
+      summary(data)
+    })
+  })
+  
+  # Analyse de corrélation
+  observeEvent(input$correlation_btn, {
+    output$correlation <- renderPrint({
+      numeric_vars <- names(data)[sapply(data, is.numeric)]
+      if (length(numeric_vars) > 1) {
+        cor(data[, ..numeric_vars], use = "complete.obs")
+      } else {
+        "Pas assez de variables numériques pour calculer la corrélation."
+      }
+    })
+  })
+  
+  # Densité interactive
+  output$density_plot <- renderPlot({
+    req(input$var)
+    ggplot(data, aes_string(x = input$var)) +
+      geom_density(fill = "purple", alpha = 0.5) +
+      labs(title = paste("Densité de", input$var), x = input$var, y = "Densité")
+  })
+}
+
+# Lancer l'application
+shinyApp(ui = ui, server = server)
+
+
+```
+
+
+
+
