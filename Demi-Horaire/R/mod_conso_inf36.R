@@ -23,7 +23,7 @@ mod_conso_inf36_ui <- function(id) {
       box(
         title = "Graphique de consommation",
         width = 12,
-        plotOutput(ns("consommation_plot"))
+        plotlyOutput(ns("consommation_plot"))
       )
     )
   )
@@ -43,9 +43,11 @@ mod_conso_inf36_server <- function(id) {
     })
     
     # Graphique de consommation
-    output$consommation_plot <- renderPlot({
+    output$consommation_plot <- renderPlotly({
       req(data_filtered())
       df <- data_filtered()
+      
+      #print(head(df))
       
       validate(
         need(nrow(df) > 0, "Aucune donnée disponible pour les paramètres sélectionnés.")
